@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import LandingPage from "./components/LandingPage";
 import ReaderControls from "./components/ReaderControls";
 import ChunkView from "./components/ChunkView";
@@ -12,6 +12,8 @@ import DifficultyBanner from "./components/DifficultyBanner";
 import CognitiveLoadBar from "./components/CognitiveLoadBar";
 import IntelligencePanel from "./components/IntelligencePanel";
 import OnboardingFlow from "./components/OnboardingFlow";
+import FocusTimerController from "./components/FocusTimer";
+import EyeTrackingConsent from "./components/EyeTrackingConsent";
 import useInteractionTracker from "./hooks/useInteractionTracker";
 import useTTS from "./hooks/useTTS";
 import useWordDefinition from "./hooks/useWordDefinition";
@@ -19,25 +21,9 @@ import useUserProfile from "./hooks/useUserProfile";
 import useRealtimeAdaptation from "./hooks/useRealtimeAdaptation";
 import useTeacherAuth from "./hooks/useTeacherAuth";
 import useCognitiveIntelligence from "./hooks/useCognitiveIntelligence";
+import useEyeTracking from "./hooks/useEyeTracking";
 
-const API = "";
-
-/* Floating decorative stars shown while reading */
-const FloatingStars = () => (
-  <div style={{ position: "fixed", inset: 0, pointerEvents: "none", zIndex: 0, overflow: "hidden" }}>
-    {["⭐","✨","🌟","💫","⭐","✨"].map((s, i) => (
-      <span key={i} style={{
-        position: "absolute",
-        left: `${10 + i * 16}%`,
-        top: `${5 + (i % 3) * 30}%`,
-        fontSize: `${0.8 + (i % 3) * 0.4}rem`,
-        opacity: 0.12,
-        animation: `float ${3 + i * 0.7}s ease-in-out infinite`,
-        animationDelay: `${i * 0.4}s`,
-      }}>{s}</span>
-    ))}
-  </div>
-);
+const API = "http://localhost:5000";
 
 function App() {
   const [content, setContent] = useState(null);
@@ -57,6 +43,9 @@ function App() {
     () => localStorage.getItem("neurocore_classroom_code") ?? null
   );
 
+  const chunkRefs      = useRef([]);
+  const activeChunkRef = useRef(null);
+
   const { userId, profile, recommendedSettings, loading, refreshProfile } = useUserProfile();
   const { teacher, loading: teacherLoading, login, register, logout, authFetch } = useTeacherAuth();
 
@@ -75,6 +64,26 @@ function App() {
   const { trackChunk, flushAll } = useInteractionTracker(sessionId, processSignal);
   const { speak, stop, speaking, rate, setRate } = useTTS();
   const { definition, lookup, clear } = useWordDefinition();
+
+  const {
+    consentState, gazeReady, gazePoint, gazeStuckSecs,
+    idleDetected, calibrating,
+    grantConsent, skipEyeTracking, calibrationDone,
+  } = useEyeTracking({
+    focusIndex,
+    chunkRefs,
+    onGazeStuck: (secs) => {
+      window.dispatchEvent(
+        new CustomEvent("neurocore:gaze-stuck", { detail: { secs } })
+      );
+    },
+  });
+
+  const handleFocusTimerSimplify = useCallback(() => {
+    window.dispatchEvent(
+      new CustomEvent("neurocore:simplify-chunk", { detail: { index: focusIndex } })
+    );
+  }, [focusIndex]);
 
   useEffect(() => {
     const seen = localStorage.getItem("neurocore_onboarding_done");
@@ -100,11 +109,6 @@ function App() {
   }, [recommendedSettings]);
 
   const chunks = useMemo(() => {
-    // LLM path: chunks array already correctly segmented by the model
-    if (content?.chunks?.length) {
-      return content.chunks.map((c) => c.original_text);
-    }
-    // Fallback path: regex sentences grouped by chunkSize slider
     if (!content?.sentences) return content?.chunkMode ?? [];
     const out = [];
     for (let i = 0; i < content.sentences.length; i += chunkSize) {
@@ -112,6 +116,12 @@ function App() {
     }
     return out;
   }, [content, chunkSize]);
+
+  useEffect(() => {
+    chunkRefs.current = chunks.map(
+      (_, i) => chunkRefs.current[i] ?? { current: null }
+    );
+  }, [chunks]);
 
   const currentChunkText = chunks[focusIndex] ?? "";
 
@@ -210,48 +220,22 @@ function App() {
     setAppMode("student");
   }, [logout]);
 
-  /* Loading state */
   if (loading || teacherLoading) {
-    return (
-      <div style={{
-        minHeight: "100vh", display: "flex",
-        alignItems: "center", justifyContent: "center",
-        flexDirection: "column", gap: 20,
-        background: "var(--bg)",
-      }}>
-        <div style={{ fontSize: "4rem", animation: "float 2s ease-in-out infinite" }}>🧠</div>
-        <div style={{ fontFamily: "var(--font-display)", fontSize: "1.4rem", color: "var(--accent)" }}>
-          Loading NeuroCore…
-        </div>
-        <div style={{
-          width: 80, height: 8,
-          background: "var(--border)", borderRadius: 4, overflow: "hidden",
-        }}>
-          <div style={{
-            height: "100%", width: "60%",
-            background: "linear-gradient(90deg, var(--accent), var(--accent2))",
-            borderRadius: 4,
-            animation: "spin 1s linear infinite",
-          }} />
-        </div>
-      </div>
-    );
+    return <div className="app-loading"><span className="loading-dot" /></div>;
   }
 
-  /* Teacher auth */
   if (appMode === "teacher-auth") {
     return (
       <div className="app">
         <header className="app-header">
           <div className="header-inner">
             <div className="logo">
-              <span className="logo-mark">🧠</span>
-              <span className="logo-text">NEUROCORE</span>
+              <span className="logo-mark">N</span>
+              <span className="logo-text">EUROCORE</span>
             </div>
-            <button className="reset-btn" onClick={() => setAppMode("student")}>
-              ← Back to Student View
-            </button>
+            <button className="reset-btn" onClick={() => setAppMode("student")}>← Student View</button>
           </div>
+          <div className="header-line" />
         </header>
         <main className="app-main">
           <TeacherAuth onLogin={login} onRegister={register} />
@@ -260,86 +244,63 @@ function App() {
     );
   }
 
-  /* Teacher dashboard */
   if (appMode === "teacher-dashboard" && teacher) {
-    return <TeacherDashboard teacher={teacher} authFetch={authFetch} onLogout={handleLogout} />;
+    return (
+      <TeacherDashboard teacher={teacher} authFetch={authFetch} onLogout={handleLogout} />
+    );
   }
 
-  /* Student app */
   return (
     <div className="app">
-      <FloatingStars />
-
       {showOnboarding && <OnboardingFlow onComplete={completeOnboarding} />}
 
-      {/* Header — shown in reader mode */}
+      {content && (
+        <EyeTrackingConsent
+          consentState={consentState}
+          calibrating={calibrating}
+          gazePoint={gazePoint}
+          gazeReady={gazeReady}
+          gazeStuckSecs={gazeStuckSecs}
+          idleDetected={idleDetected}
+          onGrant={grantConsent}
+          onSkip={skipEyeTracking}
+          onCalibrationDone={calibrationDone}
+        />
+      )}
+
       {content && (
         <header className="app-header">
           <div className="header-inner">
             <div className="logo">
-              <span className="logo-mark">🧠</span>
-              <span className="logo-text">NEUROCORE</span>
+              <span className="logo-mark">N</span>
+              <span className="logo-text">EUROCORE</span>
             </div>
-            <span className="logo-sub">
-              {focusIndex + 1} / {chunks.length} chunks
-            </span>
-            <div style={{ display: "flex", gap: 8, marginLeft: "auto", alignItems: "center", flexWrap: "wrap" }}>
-              <button
-                onClick={() => setAppMode("teacher-auth")}
-                style={{
-                  background: "var(--surface2)", border: "2px solid var(--border)",
-                  borderRadius: "30px", color: "var(--text-muted)",
-                  fontFamily: "var(--font-body)", fontWeight: 700,
-                  fontSize: "0.82rem", padding: "6px 14px", cursor: "pointer",
-                  transition: "all 0.2s",
-                }}
-              >
-                🏫 Teacher
-              </button>
-              <button
-                onClick={() => setShowDashboard(true)}
-                style={{
-                  background: "rgba(255,112,67,0.1)", border: "2px solid var(--accent)",
-                  borderRadius: "30px", color: "var(--accent)",
-                  fontFamily: "var(--font-display)", fontSize: "0.9rem",
-                  padding: "6px 16px", cursor: "pointer",
-                  transition: "all 0.2s", display: "flex", alignItems: "center", gap: 6,
-                }}
-              >
-                🧠 My Profile
+            <p className="logo-sub">Adaptive Reading Engine</p>
+            <div className="header-actions">
+              <button className="teacher-btn" onClick={() => setAppMode("teacher-auth")}>🏫 Teacher</button>
+              <button className="profile-btn" onClick={() => setShowDashboard(true)}>
+                ◉ Profile
                 {profile?.totalSessions > 0 && (
-                  <span style={{
-                    background: "var(--accent)", color: "white",
-                    borderRadius: "50%", width: 20, height: 20,
-                    display: "flex", alignItems: "center", justifyContent: "center",
-                    fontSize: "0.7rem", fontWeight: 800,
-                  }}>
-                    {profile.totalSessions}
-                  </span>
+                  <span className="session-count">{profile.totalSessions}</span>
                 )}
               </button>
-              <button className="reset-btn" onClick={handleReset}>
-                📖 New Text
-              </button>
+              <button className="reset-btn" onClick={handleReset}>← New text</button>
             </div>
           </div>
+          <div className="header-line" />
         </header>
       )}
 
-      {/* Realtime alert bar */}
       {content && (
-        <div style={{ padding: realtimeAlert || breakDue ? "0 36px 12px" : 0, position: "relative", zIndex: 5 }}>
-          <RealtimeAlert
-            alert={realtimeAlert}
-            breakDue={breakDue}
-            onDismiss={dismissAlert}
-            onDismissBreak={dismissBreak}
-          />
-        </div>
+        <RealtimeAlert
+          alert={realtimeAlert}
+          breakDue={breakDue}
+          onDismiss={dismissAlert}
+          onDismissBreak={dismissBreak}
+        />
       )}
 
-      {/* Main content */}
-      <main className={content ? "app-main" : ""} style={{ position: "relative", zIndex: 1 }}>
+      <main className={content ? "app-main" : ""}>
         {!content ? (
           <LandingPage
             onContentTransformed={setContent}
@@ -371,14 +332,14 @@ function App() {
                 rate={rate} setRate={setRate}
                 currentChunkText={currentChunkText}
               />
-              <div style={{ marginTop: 12 }}>
-                <CognitiveLoadBar chunkLoads={chunkLoads} focusIndex={focusIndex} />
-              </div>
+              <CognitiveLoadBar chunkLoads={chunkLoads} focusIndex={focusIndex} />
+
               {(focusMode || rulerMode) && (
                 <div className="nav-hint">
-                  Use ↑ ↓ arrow keys or click a chunk to move · Reading chunk {focusIndex + 1} of {chunks.length}
+                  ↑ ↓ or J / K to navigate · {focusIndex + 1} / {chunks.length}
                 </div>
               )}
+
               <ChunkView
                 chunks={chunks}
                 focusIndex={focusIndex}
@@ -390,9 +351,10 @@ function App() {
                 focusMode={focusMode}
                 rulerMode={rulerMode}
                 onWordClick={lookup}
-                sentences={content?.chunks?.map((c) => c.original_text) ?? content?.sentences}
+                sentences={content.sentences}
                 chunkSize={chunkSize}
-                llmChunks={content?.chunks ?? null}
+                activeChunkRef={activeChunkRef}
+                chunkRefs={chunkRefs}
               />
             </div>
 
@@ -404,37 +366,30 @@ function App() {
 
             {adaptation && (
               <div className="metrics-footer">
-                <span className="metrics-label">📊 SESSION INSIGHTS</span>
+                <span className="metrics-label">SESSION INSIGHTS</span>
                 <div className="metrics-row">
-                  <MetricBadge emoji="🎵" label="Rhythm" value={adaptation._metrics?.rhythmPattern ?? "—"} />
-                  <MetricBadge emoji="🔄" label="Re-reads" value={(adaptation._metrics?.rereadDensity ?? 0).toFixed(2)} />
-                  <MetricBadge emoji="🎯" label="Focus" value={(adaptation._metrics?.distractionIndex ?? 0).toFixed(2)} />
-                  <MetricBadge emoji="😴" label="Fatigue" value={(adaptation._metrics?.fatigueIndex ?? 0).toFixed(2)} />
+                  <MetricBadge label="Rhythm" value={adaptation._metrics?.rhythmPattern ?? "—"} />
+                  <MetricBadge label="Rereads" value={(adaptation._metrics?.rereadDensity ?? 0).toFixed(2)} />
+                  <MetricBadge label="Focus" value={(adaptation._metrics?.distractionIndex ?? 0).toFixed(2)} />
+                  <MetricBadge label="Fatigue" value={(adaptation._metrics?.fatigueIndex ?? 0).toFixed(2)} />
                 </div>
-              </div>
-            )}
-
-            {/* Completion message when on last chunk */}
-            {focusIndex === chunks.length - 1 && chunks.length > 1 && (
-              <div style={{
-                background: "linear-gradient(135deg, rgba(102,187,106,0.1), rgba(66,165,245,0.08))",
-                border: "3px solid #66bb6a",
-                borderRadius: 20, padding: "20px 24px",
-                textAlign: "center",
-                animation: "bounce-in 0.4s ease",
-              }}>
-                <div style={{ fontSize: "2.5rem", marginBottom: 8 }}>🎉</div>
-                <div style={{ fontFamily: "var(--font-display)", fontSize: "1.3rem", color: "#66bb6a", marginBottom: 4 }}>
-                  You reached the end!
-                </div>
-                <p style={{ fontSize: "0.9rem", fontWeight: 600, color: "var(--text-muted)" }}>
-                  Amazing work! You finished all {chunks.length} chunks. Your reading superstar badge is on the way! ⭐
-                </p>
               </div>
             )}
           </div>
         )}
       </main>
+
+      {/* ✅ FocusTimerController is now at root level — popup floats freely over entire screen */}
+      {content && (
+        <FocusTimerController
+          focusIndex={focusIndex}
+          active={!!content}
+          onSimplifyCurrentChunk={handleFocusTimerSimplify}
+          chunkRef={activeChunkRef}
+          gazeStuckSecs={gazeStuckSecs}
+          useGaze={consentState === "granted" && gazeReady}
+        />
+      )}
 
       <WordPopup definition={definition} onClose={clear} />
       {showDashboard && <NeuroDashboard profile={profile} onClose={() => setShowDashboard(false)} />}
@@ -442,9 +397,9 @@ function App() {
   );
 }
 
-const MetricBadge = ({ emoji, label, value }) => (
+const MetricBadge = ({ label, value }) => (
   <div className="metric-badge">
-    <span className="metric-label">{emoji} {label}</span>
+    <span className="metric-label">{label}</span>
     <span className="metric-value">{value}</span>
   </div>
 );
