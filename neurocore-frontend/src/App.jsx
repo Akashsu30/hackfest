@@ -277,7 +277,6 @@ function App() {
             </div>
             <p className="logo-sub">Adaptive Reading Engine</p>
             <div className="header-actions">
-              <button className="teacher-btn" onClick={() => setAppMode("teacher-auth")}>🏫 Teacher</button>
               <button className="profile-btn" onClick={() => setShowDashboard(true)}>
                 ◉ Profile
                 {profile?.totalSessions > 0 && (
@@ -310,7 +309,6 @@ function App() {
             recommendedSettings={recommendedSettings}
             classroomCode={classroomCode}
             onJoinedClassroom={(code) => setClassroomCode(code)}
-            onTeacherClick={() => setAppMode("teacher-auth")}
           />
         ) : (
           <div className="reader-layout">
@@ -379,7 +377,6 @@ function App() {
         )}
       </main>
 
-      {/* ✅ FocusTimerController is now at root level — popup floats freely over entire screen */}
       {content && (
         <FocusTimerController
           focusIndex={focusIndex}
