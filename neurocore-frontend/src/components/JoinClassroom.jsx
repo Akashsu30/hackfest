@@ -1,6 +1,6 @@
 import { useState } from "react";
 
-const API = "http://localhost:5000";
+const API = "";
 
 const JoinClassroom = ({ userId, onJoined }) => {
   const [code, setCode] = useState("");

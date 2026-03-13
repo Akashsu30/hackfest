@@ -1,106 +1,200 @@
-const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent`;
+import { ChatGoogleGenerativeAI } from "@langchain/google-genai";
+import { PromptTemplate } from "@langchain/core/prompts";
+import { RunnableSequence } from "@langchain/core/runnables";
+import { JsonOutputParser, StringOutputParser } from "@langchain/core/output_parsers";
 
-const gemini = async (prompt) => {
-  const res = await fetch(`${GEMINI_URL}?key=${process.env.GEMINI_API_KEY}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      contents: [{ parts: [{ text: prompt }] }],
-    }),
-  });
-  const data = await res.json();
-  return data.candidates?.[0]?.content?.parts?.[0]?.text ?? null;
+let _model = null;
+const getModel = () => {
+  if (!_model) {
+    _model = new ChatGoogleGenerativeAI({
+      model: "gemini-2.0-flash",
+      apiKey: process.env.GEMINI_API_KEY,
+      temperature: 0.2,
+    });
+  }
+  return _model;
 };
 
-const safeJSON = (text) => {
+const runChain = async (template, input) => {
+  const parser = new JsonOutputParser();
+
+  const prompt = PromptTemplate.fromTemplate(template);
+
+  const chain = RunnableSequence.from([
+    prompt,
+    getModel(),
+    parser
+  ]);
+
   try {
-    const clean = text.replace(/```json|```/g, "").trim();
-    return JSON.parse(clean);
+    return await chain.invoke(input);
+  } catch {
+    return null;
+  }
+};
+
+const runTextChain = async (template, input) => {
+  const parser = new StringOutputParser();
+
+  const prompt = PromptTemplate.fromTemplate(template);
+
+  const chain = RunnableSequence.from([
+    prompt,
+    getModel(),
+    parser,
+  ]);
+
+  try {
+    return await chain.invoke(input);
   } catch {
     return null;
   }
 };
 
 /**
- * Predicts reading difficulty of the full text before the session starts.
- * Returns: grade level, complexity score, hard words, estimated read time.
+ * Predict reading difficulty
  */
 export const predictReadingDifficulty = async (text) => {
-  const prompt = `Analyze the reading difficulty of this text. Return ONLY a JSON object with no markdown:
+  const template = `
+Analyze the reading difficulty of the text.
+
+Return JSON:
 {
-  "gradeLevel": <number 1-16>,
-  "complexityScore": <number 0-100>,
-  "hardWords": [<up to 5 difficult words>],
-  "estimatedReadMinutes": <number>,
-  "difficultyLabel": "easy" | "moderate" | "hard" | "very hard",
-  "suggestion": "<one sentence suggestion for the reader>"
+  "gradeLevel": number,
+  "complexityScore": number,
+  "hardWords": string[],
+  "estimatedReadMinutes": number,
+  "difficultyLabel": "easy | moderate | hard | very hard",
+  "suggestion": string
 }
 
-Text: """${text.slice(0, 1500)}"""`;
+Text:
+{text}
+`;
 
-  const raw = await gemini(prompt);
-  return safeJSON(raw) ?? { complexityScore: 50, difficultyLabel: "moderate", gradeLevel: 8, hardWords: [], estimatedReadMinutes: 5, suggestion: "Read at your own pace." };
+  const result = await runChain(template, {
+    text: text.slice(0, 1500),
+  });
+
+  return (
+    result ?? {
+      complexityScore: 50,
+      difficultyLabel: "moderate",
+      gradeLevel: 8,
+      hardWords: [],
+      estimatedReadMinutes: 5,
+      suggestion: "Read at your own pace.",
+    }
+  );
 };
 
 /**
- * Estimates cognitive load for each chunk.
- * Returns array of { chunkIndex, loadScore, reason }
+ * Estimate chunk cognitive load
  */
 export const estimateCognitiveLoad = async (chunks) => {
-  const numbered = chunks.slice(0, 20).map((c, i) => `[${i}] ${c}`).join("\n");
+  const numbered = chunks
+    .slice(0, 20)
+    .map((c, i) => `[${i}] ${c}`)
+    .join("\n");
 
-  const prompt = `For each numbered text chunk below, estimate cognitive load (0-100).
-Higher = harder to process. Return ONLY a JSON array, no markdown:
+  const template = `
+For each numbered text chunk estimate cognitive load.
+
+Return JSON array:
 [
-  { "chunkIndex": 0, "loadScore": <0-100>, "reason": "<5 words max>" },
-  ...
+ { "chunkIndex": number, "loadScore": number, "reason": string }
 ]
 
 Chunks:
-${numbered}`;
+{chunks}
+`;
 
-  const raw = await gemini(prompt);
-  return safeJSON(raw) ?? [];
+  const result = await runChain(template, { chunks: numbered });
+
+  return result ?? [];
 };
 
 /**
- * Predicts attention drift risk based on recent interaction pattern.
- * Returns: driftRisk (0-100), predictedDriftIn (chunks), recommendation.
+ * Predict attention drift
  */
 export const predictAttentionDrift = async (recentMetrics) => {
-  const prompt = `Based on these recent reading metrics, predict attention drift risk.
-Return ONLY a JSON object, no markdown:
+  const template = `
+Predict attention drift risk based on these metrics.
+
+Return JSON:
 {
-  "driftRisk": <0-100>,
-  "predictedDriftIn": <number of chunks until likely drift, or null>,
-  "reason": "<one sentence>",
-  "recommendation": "<one actionable suggestion>"
+  "driftRisk": number,
+  "predictedDriftIn": number | null,
+  "reason": string,
+  "recommendation": string
 }
 
-Recent metrics: ${JSON.stringify(recentMetrics)}`;
+Metrics:
+{metrics}
+`;
 
-  const raw = await gemini(prompt);
-  return safeJSON(raw) ?? { driftRisk: 30, predictedDriftIn: null, reason: "Stable pattern.", recommendation: "Continue reading." };
+  const result = await runChain(template, {
+    metrics: JSON.stringify(recentMetrics),
+  });
+
+  return (
+    result ?? {
+      driftRisk: 30,
+      predictedDriftIn: null,
+      reason: "Stable pattern.",
+      recommendation: "Continue reading.",
+    }
+  );
 };
 
 /**
- * Generates adaptive pacing suggestion based on full session metrics.
- * Returns: pace, adjustments, motivationalNote.
+ * Generate pacing suggestion
  */
 export const generatePacingSuggestion = async (metrics, profile) => {
-  const prompt = `Based on these reading session metrics and user profile, suggest adaptive pacing.
-Return ONLY a JSON object, no markdown:
+  const template = `
+Based on session metrics and user profile generate adaptive pacing.
+
+Return JSON:
 {
-  "recommendedPace": "slow" | "steady" | "fast",
-  "chunkSizeAdjustment": -1 | 0 | 1,
-  "spacingAdjustment": -0.2 | 0 | 0.2,
-  "breakAfterChunks": <number or null>,
-  "motivationalNote": "<one encouraging sentence under 15 words>"
+ "recommendedPace": "slow | steady | fast",
+ "chunkSizeAdjustment": -1 | 0 | 1,
+ "spacingAdjustment": -0.2 | 0 | 0.2,
+ "breakAfterChunks": number | null,
+ "motivationalNote": string
 }
 
-Session metrics: ${JSON.stringify(metrics)}
-User profile: ${JSON.stringify(profile)}`;
+Session metrics:
+{metrics}
 
-  const raw = await gemini(prompt);
-  return safeJSON(raw) ?? { recommendedPace: "steady", chunkSizeAdjustment: 0, spacingAdjustment: 0, breakAfterChunks: null, motivationalNote: "You're doing great, keep going." };
+User profile:
+{profile}
+`;
+
+  const result = await runChain(template, {
+    metrics: JSON.stringify(metrics),
+    profile: JSON.stringify(profile),
+  });
+
+  return (
+    result ?? {
+      recommendedPace: "steady",
+      chunkSizeAdjustment: 0,
+      spacingAdjustment: 0,
+      breakAfterChunks: null,
+      motivationalNote: "You're doing great, keep going.",
+    }
+  );
+};
+
+/**
+ * Simplify a text chunk to a lower reading level
+ */
+export const simplifyText = async (text) => {
+  const template = `Rewrite the following text in much simpler language. Use short sentences. Avoid jargon. Aim for a reading level of a 12-year-old. Return only the simplified text, nothing else.
+
+{text}`;
+
+  const result = await runTextChain(template, { text });
+
+  return result ?? null;
 };

@@ -1,45 +1,47 @@
 import { transformContent } from "../services/contentTransformer.js";
+import { processContent, resolveDoubt } from "../services/contentProcessor.js";
 
 export const transformText = async (req, res) => {
   try {
     const { text } = req.body;
     if (!text) return res.status(400).json({ error: "Text is required" });
-    const transformed = transformContent(text);
-    res.json(transformed);
+
+    // Primary path: LangChain/Gemini pipeline.
+    // Returns { chunks, sentences, simplified, bulletMode } on success.
+    // Returns null if the LLM fails, times out, or returns malformed data.
+    const llmResult = await processContent(text);
+    if (llmResult) return res.json(llmResult);
+
+    // Fallback path: original regex-based transformer.
+    // Returns { sentences, simplified, bulletMode, chunkMode } — no `chunks` key.
+    // Frontend detects the absence of `chunks` and uses sentence-grouping logic.
+    console.warn("[contentController] LLM pipeline unavailable, using regex fallback.");
+    return res.json(transformContent(text));
+
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 };
 
-export const simplifyChunk = async (req, res) => {
+export const simplifyChunk = async (_req, res) => {
+  // Permanently retired — simplification is now pre-computed in /transform.
+  res.status(410).json({
+    error: "Gone",
+    message: "Use content.chunks[i].simplified_text — no API call needed.",
+  });
+};
+
+export const askDoubt = async (req, res) => {
   try {
-    const { text } = req.body;
-    if (!text) return res.status(400).json({ error: "Text is required" });
-
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          contents: [
-            {
-              parts: [
-                {
-                  text: `Rewrite the following text in much simpler language. Use short sentences. Avoid jargon. Aim for a reading level of a 12-year-old. Return only the simplified text, nothing else.\n\n${text}`,
-                },
-              ],
-            },
-          ],
-        }),
-      }
-    );
-
-    const data = await response.json();
-    const simplified =
-      data.candidates?.[0]?.content?.parts?.[0]?.text ?? "Could not simplify.";
-
-    res.json({ simplified });
+    const { chunkText, question } = req.body;
+    if (!chunkText || !question) {
+      return res.status(400).json({ error: "chunkText and question are required" });
+    }
+    const answer = await resolveDoubt(chunkText.slice(0, 2000), question.slice(0, 500));
+    if (!answer) {
+      return res.status(503).json({ error: "AI is temporarily unavailable. Please try again." });
+    }
+    return res.json({ answer });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }

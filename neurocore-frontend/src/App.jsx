@@ -20,7 +20,7 @@ import useRealtimeAdaptation from "./hooks/useRealtimeAdaptation";
 import useTeacherAuth from "./hooks/useTeacherAuth";
 import useCognitiveIntelligence from "./hooks/useCognitiveIntelligence";
 
-const API = "http://localhost:5000";
+const API = "";
 
 /* Floating decorative stars shown while reading */
 const FloatingStars = () => (
@@ -100,6 +100,11 @@ function App() {
   }, [recommendedSettings]);
 
   const chunks = useMemo(() => {
+    // LLM path: chunks array already correctly segmented by the model
+    if (content?.chunks?.length) {
+      return content.chunks.map((c) => c.original_text);
+    }
+    // Fallback path: regex sentences grouped by chunkSize slider
     if (!content?.sentences) return content?.chunkMode ?? [];
     const out = [];
     for (let i = 0; i < content.sentences.length; i += chunkSize) {
@@ -385,8 +390,9 @@ function App() {
                 focusMode={focusMode}
                 rulerMode={rulerMode}
                 onWordClick={lookup}
-                sentences={content.sentences}
+                sentences={content?.chunks?.map((c) => c.original_text) ?? content?.sentences}
                 chunkSize={chunkSize}
+                llmChunks={content?.chunks ?? null}
               />
             </div>
 

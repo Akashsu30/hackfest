@@ -1,6 +1,6 @@
 import { useRef, useEffect, useCallback } from "react";
 
-const API = "http://localhost:5000";
+const API = "";
 
 const useInteractionTracker = (sessionId, onRealtimeSignal) => {
   const chunkStartTime = useRef(Date.now());

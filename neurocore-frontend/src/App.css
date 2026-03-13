@@ -1236,6 +1236,168 @@
 }
 .teacher-auth button:hover { transform: scale(1.03); }
 
+/* =====================
+   TOOLTIP WORD — inline complex word annotation
+   ===================== */
+.tooltip-word {
+  position: relative;
+  display: inline;
+  text-decoration: underline dotted var(--accent);
+  text-underline-offset: 3px;
+  cursor: help;
+}
+
+.tooltip-box {
+  display: none;
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--text);
+  color: var(--surface);
+  font-size: 0.78rem;
+  font-weight: 600;
+  line-height: 1.4;
+  padding: 6px 12px;
+  border-radius: 10px;
+  white-space: normal;
+  max-width: 220px;
+  width: max-content;
+  z-index: 100;
+  box-shadow: var(--shadow-pop);
+  pointer-events: none;
+}
+
+.tooltip-box::after {
+  content: "";
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border: 6px solid transparent;
+  border-top-color: var(--text);
+}
+
+.tooltip-word:hover .tooltip-box {
+  display: block;
+  animation: fade-in 0.15s ease;
+}
+
+/* =====================
+   ASK DOUBT AREA
+   ===================== */
+.ask-doubt-area {
+  background: rgba(66, 165, 245, 0.06);
+  border: 1.5px solid rgba(66, 165, 245, 0.30);
+  border-radius: 12px;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ask-doubt-area textarea {
+  background: var(--surface);
+  border: 2px solid var(--border);
+  border-radius: 10px;
+  color: var(--text);
+  font-family: var(--font-body);
+  font-size: 0.88rem;
+  font-weight: 600;
+  line-height: 1.6;
+  padding: 10px 12px;
+  resize: vertical;
+  min-height: 80px;
+  width: 100%;
+  outline: none;
+  transition: border-color 0.2s;
+  box-sizing: border-box;
+}
+
+.ask-doubt-area textarea:focus {
+  border-color: var(--accent2);
+  box-shadow: 0 0 0 3px rgba(66, 165, 245, 0.12);
+}
+
+.ask-doubt-area textarea::placeholder {
+  color: var(--text-dim);
+  font-weight: 600;
+}
+
+.ask-doubt-close {
+  align-self: flex-end;
+  background: var(--surface2);
+  border: 2px solid var(--border);
+  border-radius: 20px;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-family: var(--font-body);
+  font-size: 0.78rem;
+  font-weight: 700;
+  padding: 4px 14px;
+  transition: all 0.2s;
+}
+
+.ask-doubt-close:hover {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+/* Ask Doubt — submit button */
+.ask-doubt-submit {
+  align-self: flex-end;
+  background: linear-gradient(135deg, var(--accent2), #1565c0);
+  border: none;
+  border-radius: 20px;
+  color: white;
+  cursor: pointer;
+  font-family: var(--font-body);
+  font-size: 0.82rem;
+  font-weight: 700;
+  padding: 6px 18px;
+  transition: all 0.2s;
+  min-width: 100px;
+}
+.ask-doubt-submit:hover:not(:disabled) {
+  transform: scale(1.04);
+  box-shadow: 0 4px 14px rgba(66, 165, 245, 0.4);
+}
+.ask-doubt-submit:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* Ask Doubt — response display */
+.doubt-response {
+  background: rgba(66, 165, 245, 0.05);
+  border: 1.5px solid rgba(66, 165, 245, 0.25);
+  border-radius: 10px;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  animation: fade-in 0.25s ease;
+}
+.doubt-response-label {
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--accent2);
+}
+.doubt-question-text {
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  font-style: italic;
+}
+.doubt-answer-text {
+  font-size: 0.92rem;
+  font-weight: 600;
+  color: var(--text);
+  line-height: 1.6;
+}
+
 /* Responsive */
 @media (max-width: 680px) {
   .app-main { padding: 16px 18px 32px; }

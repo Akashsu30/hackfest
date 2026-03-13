@@ -1,6 +1,6 @@
 import { useState, useCallback } from "react";
 
-const API = "http://localhost:5000";
+const API = "";
 
 const useCognitiveIntelligence = () => {
   const [difficulty, setDifficulty] = useState(null);
